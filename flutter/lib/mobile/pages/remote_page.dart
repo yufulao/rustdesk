@@ -25,6 +25,7 @@ import '../../models/shortcut_model.dart';
 import '../../utils/image.dart';
 import '../widgets/dialog.dart';
 import '../widgets/custom_scale_widget.dart';
+import 'ios_windows_soft_keyboard.dart';
 
 final initText = '1' * 1024;
 
@@ -92,6 +93,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   bool _showBar = !isWebDesktop;
   bool _showGestureHelp = false;
   String _value = '';
+  Future<void> _iosWindowsInput = Future<void>.value();
   Orientation? _currentOrientation;
   final _uniqueKey = UniqueKey();
   Timer? _iosKeyboardWorkaroundTimer;
@@ -122,6 +124,9 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    if (isIOS) {
+      _textController.addListener(_handleIOSWindowsSoftKeyboardInput);
+    }
     gFFI.ffiModel.updateEventListener(sessionId, widget.id);
     gFFI.start(
       widget.id,
@@ -186,6 +191,9 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
 
   @override
   Future<void> dispose() async {
+    if (isIOS) {
+      _textController.removeListener(_handleIOSWindowsSoftKeyboardInput);
+    }
     HardwareKeyboard.instance.removeHandler(_handleLocalKeyEvent);
     WidgetsBinding.instance.removeObserver(this);
     // Close the session up-front. `gFFI.close()` below only calls `sessionClose`
@@ -320,6 +328,64 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     setState(() {});
   }
 
+  bool get _usesIOSWindowsSoftKeyboard =>
+      isIOS && inputModel.peerPlatform == kPeerPlatformWindows;
+
+  bool get _canSendIOSWindowsSoftKeyboardInput =>
+      _usesIOSWindowsSoftKeyboard &&
+      inputModel.keyboardInputAllowed &&
+      inputModel.keyboardPerm &&
+      !inputModel.isViewOnly &&
+      !inputModel.isViewCamera;
+
+  void _handleIOSWindowsSoftKeyboardInput() {
+    if (!_showEdit ||
+        !_mobileFocusNode.hasFocus ||
+        !_canSendIOSWindowsSoftKeyboardInput) {
+      return;
+    }
+
+    final edit = iosWindowsSoftKeyboardEdit(_value, _textController.value);
+    if (edit == null) return;
+    _value = edit.committedText;
+
+    final session = sessionId;
+    final alt = inputModel.alt;
+    final ctrl = inputModel.ctrl;
+    final shift = inputModel.shift;
+    final command = inputModel.command;
+    Future<void> sendKey(String name) => bind.sessionInputKey(
+          sessionId: session,
+          name: name,
+          down: false,
+          press: true,
+          alt: alt,
+          ctrl: ctrl,
+          shift: shift,
+          command: command,
+        );
+
+    // The asynchronous bridge must enqueue edits in the order iOS commits them.
+    _iosWindowsInput = _iosWindowsInput.then((_) async {
+      if (!mounted ||
+          session != sessionId ||
+          !_canSendIOSWindowsSoftKeyboardInput) {
+        return;
+      }
+      for (var i = 0; i < edit.backspaces; i++) {
+        await sendKey('VK_BACK');
+      }
+      final key = edit.key;
+      if (key != null) {
+        await sendKey(key);
+      } else if (edit.text.isNotEmpty) {
+        await bind.sessionInputString(sessionId: session, value: edit.text);
+      }
+    }).catchError((Object error) {
+      debugPrint('Failed to send iOS soft keyboard input: $error');
+    });
+  }
+
   void _handleIOSSoftKeyboardInput(String newValue) {
     var oldValue = _value;
     _value = newValue;
@@ -417,7 +483,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
 
   // handle mobile virtual keyboard
   void handleSoftKeyboardInput(String newValue) {
-    if (!inputModel.keyboardInputAllowed) {
+    // The iOS-to-Windows controller listener also receives composition-only edits.
+    if (_usesIOSWindowsSoftKeyboard || !inputModel.keyboardInputAllowed) {
       return;
     }
     if (isIOS) {
