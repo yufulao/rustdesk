@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: ios-pinyin-build
@@ -19,13 +20,9 @@ env:
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 
 jobs:
-  generate-bridge:
-    uses: ./.github/workflows/bridge.yml
-
   build-rustdesk-ios:
     name: build rustdesk ios ipa
     runs-on: ${{ matrix.job.os }}
-    needs: [generate-bridge]
     strategy:
       fail-fast: false
       matrix:
@@ -107,6 +104,9 @@ jobs:
         with:
           name: bridge-artifact
           path: ./
+          # Generated in this fork for the same source by the initial build.
+          run-id: 44699414310
+          github-token: ${{ github.token }}
 
       - name: Build rustdesk lib
         run: |
@@ -129,7 +129,7 @@ jobs:
           app="$archive/Products/Applications/Runner.app"
           test -f "$app/Info.plist"
           executable=$(/usr/libexec/PlistBuddy -c 'Print CFBundleExecutable' "$app/Info.plist")
-          xcrun lipo -verify_arch arm64 "$app/$executable"
+          xcrun lipo "$app/$executable" -verify_arch arm64
           stage=$(mktemp -d)
           mkdir -p "$stage/Payload" ios-output
           ditto "$app" "$stage/Payload/Runner.app"
