@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 
 import 'package:bot_toast/bot_toast.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -2805,6 +2806,17 @@ class CanvasModel with ChangeNotifier {
     });
   }
 
+  void updateIOSKeyboardViewport(double previousAdjustY) {
+    // Painting and hit testing both use _y + getAdjustY().
+    _y += previousAdjustY - getAdjustY();
+    _timerMobileFocusCanvasCursor?.cancel();
+    _timerMobileFocusCanvasCursor =
+        Timer(const Duration(milliseconds: 100), () {
+      updateSize();
+      notifyListeners();
+    });
+  }
+
   void saveMobileOffsetBeforeSoftKeyboard() {
     _timerMobileRestoreCanvasOffset?.cancel();
     _offsetBeforeMobileSoftKeyboard = Offset(_x, _y);
@@ -3154,6 +3166,15 @@ class CursorModel with ChangeNotifier {
   set blockEvents(bool v) => _blockEvents = v;
 
   keyHelpToolsVisibilityChanged(Rect? rect, bool keyboardIsVisible) {
+    final keyboardChanged = _lastKeyboardIsVisible != keyboardIsVisible;
+    final resizeIOSViewport = isMobile &&
+        defaultTargetPlatform == TargetPlatform.iOS &&
+        (keyboardChanged ||
+            (keyboardIsVisible && _keyHelpToolsRect?.bottom != rect?.bottom));
+    final canvas = isMobile && (keyboardChanged || resizeIOSViewport)
+        ? parent.target?.canvasModel
+        : null;
+    final previousAdjustY = resizeIOSViewport ? canvas?.getAdjustY() : null;
     _keyHelpToolsRect = rect;
     if (rect == null) {
       _lastIsBlocked = false;
@@ -3163,16 +3184,19 @@ class CursorModel with ChangeNotifier {
       // `lastIsBlocked` will be set when the cursor is moving or touch somewhere else.
       _lastIsBlocked = true;
     }
-    if (isMobile && _lastKeyboardIsVisible != keyboardIsVisible) {
+    if (keyboardChanged && !resizeIOSViewport) {
       if (keyboardIsVisible) {
-        parent.target?.canvasModel.saveMobileOffsetBeforeSoftKeyboard();
-        parent.target?.canvasModel.mobileFocusCanvasCursor();
-        parent.target?.canvasModel.isMobileCanvasChanged = false;
+        canvas?.saveMobileOffsetBeforeSoftKeyboard();
+        canvas?.mobileFocusCanvasCursor();
+        canvas?.isMobileCanvasChanged = false;
       } else {
-        parent.target?.canvasModel.restoreMobileOffsetAfterSoftKeyboard();
+        canvas?.restoreMobileOffsetAfterSoftKeyboard();
       }
     }
     _lastKeyboardIsVisible = keyboardIsVisible;
+    if (previousAdjustY != null) {
+      canvas?.updateIOSKeyboardViewport(previousAdjustY);
+    }
   }
 
   addBlockedRect(Rect rect) {

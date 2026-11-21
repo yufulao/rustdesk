@@ -319,8 +319,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       _iosKeyboardWorkaroundTimer = null;
       _timer?.cancel();
       _timer = Timer(kMobileDelaySoftKeyboardFocus, () {
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
-            overlays: SystemUiOverlay.values);
+        if (!isIOS) {
+          SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
+              overlays: SystemUiOverlay.values);
+        }
         _mobileFocusNode.requestFocus();
       });
     }
@@ -542,8 +544,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       setState(() => _showEdit = true);
       _timer?.cancel();
       _timer = Timer(kMobileDelaySoftKeyboardFocus, () {
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
-            overlays: SystemUiOverlay.values);
+        if (!isIOS) {
+          SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
+              overlays: SystemUiOverlay.values);
+        }
         _mobileFocusNode.requestFocus();
       });
     });
@@ -621,8 +625,13 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                     child: isWebDesktop
                         ? getBodyForDesktopWithListener()
                         : SafeArea(
-                            child:
-                                OrientationBuilder(builder: (ctx, orientation) {
+                            child: OrientationBuilder(
+                                builder: (ctx, viewportOrientation) {
+                              // The keyboard can make a portrait viewport wider
+                              // than it is tall without rotating the device.
+                              final orientation = isIOS
+                                  ? MediaQuery.orientationOf(ctx)
+                                  : viewportOrientation;
                               if (_currentOrientation != orientation) {
                                 Timer(const Duration(milliseconds: 200), () {
                                   gFFI.dialogManager
