@@ -119,7 +119,7 @@ jobs:
           pushd flutter
           # flutter build ipa --release --obfuscate --split-debug-info=./split-debug-info --no-codesign
           # for easy debugging
-          flutter build ipa --release --no-codesign
+          flutter build ipa --release --no-codesign --build-number=72
 
       - name: Package unsigned iPhone IPA
         shell: bash
@@ -133,13 +133,13 @@ jobs:
           stage=$(mktemp -d)
           mkdir -p "$stage/Payload" ios-output
           ditto "$app" "$stage/Payload/Runner.app"
-          ditto -c -k --keepParent "$stage/Payload" ios-output/RustDesk-iOS-Pinyin-unsigned.ipa
-          unzip -tq ios-output/RustDesk-iOS-Pinyin-unsigned.ipa
+          ditto -c -k --keepParent "$stage/Payload" ios-output/RustDesk-iOS-1.5.3-72-unsigned.ipa
+          unzip -tq ios-output/RustDesk-iOS-1.5.3-72-unsigned.ipa
 
       - name: Upload unsigned iPhone IPA
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: RustDesk-iOS-Pinyin-unsigned
-          path: ios-output/RustDesk-iOS-Pinyin-unsigned.ipa
+          name: RustDesk-iOS-1.5.3-72-unsigned
+          path: ios-output/RustDesk-iOS-1.5.3-72-unsigned.ipa
           if-no-files-found: error
           retention-days: 7
